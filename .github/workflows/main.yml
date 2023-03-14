@@ -18,6 +18,12 @@ jobs:
         with:
           ocaml-compiler: ocaml-base-compiler.5.0.0
 
+      - name: Install Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Cache opam packages
         uses: actions/cache@v3
         with:
@@ -54,6 +60,12 @@ jobs:
         uses: ocaml/setup-ocaml@v2
         with:
           ocaml-compiler: ocaml-base-compiler.5.0.0
+
+      - name: Install Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
       - name: Cache opam packages
         uses: actions/cache@v3

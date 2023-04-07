@@ -2,19 +2,25 @@ package codegen;
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 import static org.objectweb.asm.Opcodes.*;
 import org.objectweb.asm.Label;
 import java.io.FileOutputStream;
+import java.io.PrintWriter;
+import java.lang.invoke.CallSite;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
+import org.objectweb.asm.Type;
 import java.io.File;
+import org.objectweb.asm.Handle;
+//import org.objectweb.asm.util.CheckClassAdapter;
 
 import java.util.*;
-
-import javax.swing.event.CaretEvent;
-import javax.swing.text.FieldView;
 
 import com.fasterxml.jackson.databind.*;
 
 class ClassfileMaker {
+    //CheckClassAdapter cw; // for testing
     ClassWriter cw;
     JsonNode classes;
     JsonNode interfaces;
@@ -32,7 +38,7 @@ class ClassfileMaker {
             iw = new ClassWriter(ClassWriter.COMPUTE_MAXS+ClassWriter.COMPUTE_FRAMES);
             JsonNode interf = interfaces.get(i);
 
-            iw.visit(V1_5, ACC_PUBLIC + ACC_ABSTRACT + ACC_INTERFACE, pkg + interf.get("name").asText(), null, "java/lang/Object", null);
+            iw.visit(V1_7, ACC_PUBLIC + ACC_ABSTRACT + ACC_INTERFACE, pkg + interf.get("name").asText(), null, "java/lang/Object", null);
             
             JsonNode functions = interf.get("functions");
             for (int j = 0; j < functions.size(); j++) {
@@ -53,9 +59,13 @@ class ClassfileMaker {
             if (!c.get("implements").asText().equals("")) {
                 interf = new String[] {c.get("implements").asText()};
             }
-            cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+            cw = new ClassWriter(ClassWriter.COMPUTE_MAXS + ClassWriter.COMPUTE_FRAMES);
+
+            //ClassWriter cv = new ClassWriter(ClassWriter.COMPUTE_MAXS + ClassWriter.COMPUTE_FRAMES); // for testing
+            //cw = new CheckClassAdapter(cv); // for testing
+
             // version, access, name, signature, superName, String[] interfaces
-            cw.visit(V1_5, ACC_PUBLIC + ACC_SUPER, pkg + c.get("name").asText(), null, "java/lang/Object", interf);
+            cw.visit(V1_7, ACC_PUBLIC + ACC_SUPER, pkg + c.get("name").asText(), null, "java/lang/Object", interf);
 
             if (c.get("name").asText().equals("Main")) {
                 cw.visitField(ACC_PUBLIC+ACC_FINAL+ACC_STATIC, "random", "Ljava/util/Random;", null, null).visitEnd();
@@ -93,6 +103,7 @@ class ClassfileMaker {
             }
             cw.visitEnd();
 
+            ///outputClassfile(c.get("name").asText(), cv); // for testing
             outputClassfile(c.get("name").asText(), cw);
         }
         
@@ -171,6 +182,33 @@ class ClassfileMaker {
                             break;
                         default:
                             System.out.println("Unknown arg_int: " + bytecode.get("instr").asText());
+                    }
+                    break;
+                case "dynamic":
+                    switch (bytecode.get("instr").asText()) {
+                        case "INVOKEDYNAMIC":
+                            Handle handle = new Handle(
+                            H_INVOKESTATIC,
+                            "java/lang/invoke/LambdaMetafactory",
+                            "metafactory",
+                            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
+                            false);
+                            mv.visitInvokeDynamicInsn(
+                                bytecode.get("interfFuncName").asText(), 
+                                bytecode.get("interfFuncDesc").asText(), 
+                                handle, 
+                                new Object[] {
+                                    Type.getType(bytecode.get("SAMtype").asText()), 
+                                    new Handle(
+                                        H_INVOKESPECIAL,
+                                        "pkg/Program", 
+                                        bytecode.get("functionName").asText(), 
+                                        bytecode.get("functionDesc").asText(), 
+                                        false), 
+                                    Type.getType(bytecode.get("instantiatedMT").asText())});
+                            break;
+                        default:
+                                System.out.println("Unknown dynamic: " + bytecode.get("instr").asText());
                     }
                     break;
                 case "empty":

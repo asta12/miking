@@ -502,32 +502,7 @@ let charClass_ = use JVMAst in
         []
 
 let constClassList_ = 
-    [addiClass_, 
-    subiClass_, 
-    muliClass_, 
-    diviClass_, 
-    modiClass_,
-    addfClass_, 
-    subfClass_, 
-    mulfClass_, 
-    divfClass_,
-    slliClass_,
-    srliClass_,
-    sraiClass_,
-    eqiClass_,
-    neqiClass_,
-    ltiClass_,
-    gtiClass_,
-    leqiClass_,
-    geqiClass_,
-    eqfClass_,
-    neqfClass_,
-    ltfClass_,
-    gtfClass_,
-    leqfClass_,
-    geqfClass_,
-    eqcClass_,
-    recordClass_,
+    [recordClass_,
     charClass_,
     randClass_]
 
@@ -563,6 +538,8 @@ let applyArithC_ = use JVMAst in
             [checkcast_ char_T, 
             putfield_ (concat pkg_ name) "var" char_LT]],
         classes = concat env.classes arg.classes } 
+    
+---------------
 
 let oneArgOpI_ = 
     lam op. lam env. lam arg.
@@ -600,7 +577,23 @@ let arithFunII_ = use JVMAst in
             wrapInteger_,
             [areturn_]])
 
-let arithFunII__ = use JVMAst in
+let arithFunIjavaI_ = use JVMAst in
+    lam name. lam arith.
+    createFunction 
+        name 
+        (methodtype_T (concat object_LT object_LT) object_LT) 
+        (foldl concat 
+            [aload_ 1]
+            [unwrapInteger_,
+            [aload_ 2,
+            checkcast_ "java/lang/Long", 
+            invokevirtual_ "java/lang/Long" "intValue" "()I"],
+            arith,
+            wrapInteger_,
+            [areturn_]])
+
+
+let fun__ = use JVMAst in
     lam name1. lam name2.
     createFunction
         name1 
@@ -610,10 +603,229 @@ let arithFunII__ = use JVMAst in
         invokedynamic_ (methodtype_T (concat (type_LT (concat pkg_ "Program")) object_LT) (type_LT (concat pkg_ "Function"))) name2 (methodtype_T (concat object_LT object_LT) object_LT),
         areturn_] 
 
-let addiFun_ = arithFunII_ "addiLogic" [ladd_]
-let addiFun__ = arithFunII__ "addi" "addiLogic"
+let arithFunFF_ = use JVMAst in
+    lam name. lam arith.
+    createFunction 
+        name 
+        (methodtype_T (concat object_LT object_LT) object_LT) 
+        (foldl concat 
+            [aload_ 1]
+            [unwrapFloat_,
+            [aload_ 2],
+            unwrapFloat_,
+            arith,
+            wrapFloat_,
+            [areturn_]])
 
-let mainFuncs_ = [addiFun_, addiFun__]
+let arithFunIB_ = use JVMAst in 
+    lam name. lam arith. lam label.
+    createFunction
+        name
+        (methodtype_T (concat object_LT object_LT) object_LT)
+        (foldl concat
+            [ldcInt_ 1,
+            aload_ 1]
+            [unwrapInteger_, 
+            [aload_ 2], 
+            unwrapInteger_, 
+            arith,
+            [pop_, 
+            ldcInt_ 0,
+            label_ label],
+            wrapBoolean_,
+            [areturn_]])
+
+let arithFunIB_ = use JVMAst in 
+    lam name. lam arith. lam label.
+    createFunction
+        name
+        (methodtype_T (concat object_LT object_LT) object_LT)
+        (foldl concat
+            [ldcInt_ 1,
+            aload_ 1]
+            [unwrapInteger_, 
+            [aload_ 2], 
+            unwrapInteger_, 
+            arith,
+            [pop_, 
+            ldcInt_ 0,
+            label_ label],
+            wrapBoolean_,
+            [areturn_]])
+
+let arithFunFB_ = use JVMAst in
+    lam name. lam arith. lam label.
+    createFunction
+        name
+        (methodtype_T (concat object_LT object_LT) object_LT)
+        (foldl concat
+            [ldcInt_ 1,
+            aload_ 1] 
+            [unwrapFloat_, 
+            [aload_ 2], 
+            unwrapFloat_, 
+            arith,
+            [pop_, 
+            ldcInt_ 0,
+            label_ label],
+            wrapBoolean_,
+            [areturn_]])
+
+let arithFunCB_ = use JVMAst in
+    lam name. lam arith. lam label.
+    createFunction
+        name
+        (methodtype_T (concat object_LT object_LT) object_LT)
+        (foldl concat 
+                [ldcInt_ 1,
+                aload_ 1] 
+                [unwrapChar_, 
+                [aload_ 2], 
+                unwrapChar_, 
+                arith,
+                [pop_, 
+                ldcInt_ 0,
+                label_ label],
+                wrapBoolean_,
+                [areturn_]])
+
+
+let applyFun_ = use JVMAst in
+    lam env. lam name. lam arg.
+        { env with 
+            bytecode = 
+                foldl concat env.bytecode 
+                [[aload_ 0, 
+                invokedynamic_ (methodtype_T (type_LT (concat pkg_ "Program")) (type_LT (concat pkg_ "Function"))) name (methodtype_T object_LT object_LT)], 
+                arg.bytecode, 
+                [invokeinterface_ (concat pkg_ "Function") "apply" (methodtype_T object_LT object_LT)]], 
+            classes = concat env.classes arg.classes,
+            functions = concat env.functions arg.functions,
+            args = 0 }
+
+let addiFun_ = arithFunII_ "addiLogic" [ladd_]
+let addiFun__ = fun__ "addi" "addiLogic"
+let subiFun_ = arithFunII_ "subiLogic" [lsub_]
+let subiFun__ = fun__ "subi" "subiLogic"
+let muliFun_ = arithFunII_ "muliLogic" [lmul_]
+let muliFun__ = fun__ "muli" "muliLogic"
+let diviFun_ = arithFunII_ "diviLogic" [ldiv_]
+let diviFun__ = fun__ "divi" "diviLogic"
+let modiFun_ = arithFunII_ "modiLogic" [lrem_]
+let modiFun__ = fun__ "modi" "modiLogic"
+let addfFun_ = arithFunFF_ "addfLogic" [dadd_]
+let addfFun__ = fun__ "addf" "addfLogic"
+let subfFun_ = arithFunFF_ "subfLogic" [dsub_]
+let subfFun__ = fun__ "subf" "subfLogic"
+let mulfFun_ = arithFunFF_ "mulfLogic" [dmul_]
+let mulfFun__ = fun__ "mulf" "mulfLogic"
+let divfFun_ = arithFunFF_ "divfLogic" [ddiv_]
+let divfFun__ = fun__ "divf" "divfLogic"
+let slliFun_ = arithFunIjavaI_ "slliLogic" [lshl_]
+let slliFun__ = fun__ "slli" "slliLogic"
+let srliFun_ = arithFunIjavaI_ "srliLogic" [lushr_]
+let srliFun__ = fun__ "srli" "srliLogic"
+let sraiFun_ = arithFunIjavaI_ "sraiLogic" [lshr_]
+let sraiFun__ = fun__ "srai" "sraiLogic"
+let eqiFun_ = arithFunIB_ "eqiLogic" [lcmp_, ifeq_ "end"] "end"
+let eqiFun__ = fun__ "eqi" "eqiLogic"
+let neqiFun_ = arithFunIB_ "neqiLogic" [lcmp_, ifne_ "end"] "end"
+let neqiFun__ = fun__ "neqi" "neqiLogic"
+let ltiFun_ = arithFunIB_ "ltiLogic" [lcmp_, iflt_ "end"] "end"
+let ltiFun__ = fun__ "lti" "ltiLogic"
+let gtiFun_ = arithFunIB_ "gtiLogic" [lcmp_, ifgt_ "end"] "end"
+let gtiFun__ = fun__ "gti" "gtiLogic"
+let leqiFun_ = arithFunIB_ "leqiLogic" [lcmp_, ifle_ "end"] "end"
+let leqiFun__ = fun__ "leqi" "leqiLogic"
+let geqiFun_ = arithFunIB_ "geqiLogic" [lcmp_, ifge_ "end"] "end"
+let geqiFun__ = fun__ "geqi" "geqiLogic"
+let eqfFun_ = arithFunFB_ "eqfLogic" [dcmp_, ifeq_ "end"] "end"
+let eqfFun__ = fun__ "eqf" "eqfLogic"
+let neqfFun_ = arithFunFB_ "neqfLogic" [dcmp_, ifne_ "end"] "end"
+let neqfFun__ = fun__ "neqf" "neqfLogic"
+let ltfFun_ = arithFunFB_ "ltfLogic" [dcmp_, iflt_ "end"] "end"
+let ltfFun__ = fun__ "ltf" "ltfLogic"
+let gtfFun_ = arithFunFB_ "gtfLogic" [dcmp_, ifgt_ "end"] "end"
+let gtfFun__ = fun__ "gtf" "gtfLogic"
+let leqfFun_ = arithFunFB_ "leqfLogic" [dcmp_, ifle_ "end"] "end"
+let leqfFun__ = fun__ "leqf" "leqfLogic"
+let geqfFun_ = arithFunFB_ "geqfLogic" [dcmp_, ifge_ "end"] "end"
+let geqfFun__ = fun__ "geqf" "geqfLogic"
+let el = createName_ "end"
+let eqcFun_ = arithFunCB_ "eqcLogic" [ificmpeq_ el] el
+let eqcFun__ = fun__ "eqc" "eqcLogic"
+let randFun_ = use JVMAst in
+    createFunction
+        "randLogic"
+        (methodtype_T (concat object_LT object_LT) object_LT)
+        (foldl concat
+                [getstatic_ (concat pkg_ "Main") "random" "Ljava/util/Random;",
+                aload_ 2]
+                [unwrapInteger_,
+                [aload_ 1],
+                unwrapInteger_,
+                [lsub_,
+                invokevirtual_ "java/util/Random" "nextLong" "(J)J",
+                aload_ 1],
+                unwrapInteger_,
+                [ladd_],
+                wrapInteger_,
+                [areturn_]])
+let randFun__ = fun__ "rand" "randLogic"
+
+
+let mainFuncs_ = [addiFun_, 
+                  addiFun__,
+                  subiFun_,
+                  subiFun__,
+                  muliFun_,
+                  muliFun__,
+                  diviFun_,
+                  diviFun__,
+                  modiFun_,
+                  modiFun__,
+                  addfFun_, 
+                  addfFun__,
+                  subfFun_,
+                  subfFun__,
+                  mulfFun_,
+                  mulfFun__,
+                  divfFun_,
+                  divfFun__,
+                  slliFun_,
+                  slliFun__,
+                  srliFun_,
+                  srliFun__,
+                  sraiFun_,
+                  sraiFun__,
+                  eqiFun_,
+                  eqiFun__,
+                  neqiFun_,
+                  neqiFun__,
+                  ltiFun_,
+                  ltiFun__,
+                  gtiFun_,
+                  gtiFun__,
+                  leqiFun_,
+                  leqiFun__,
+                  geqiFun_,
+                  geqiFun__,
+                  eqfFun_,
+                  eqfFun__,
+                  neqfFun_,
+                  neqfFun__,
+                  ltfFun_,
+                  ltfFun__,
+                  gtfFun_,
+                  gtfFun__,
+                  leqfFun_,
+                  leqfFun__,
+                  geqfFun_,
+                  geqfFun__,
+                  eqcFun_,
+                  eqcFun__,
+                  randFun_,
+                  randFun__]
 
 ---------------
 

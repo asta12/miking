@@ -56,68 +56,59 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         match lhs with TmConst _ then 
             -- this could be a Map?
             match lhs with TmConst { val = CAddi _ } then 
-                { env with 
-                    bytecode = 
-                        foldl concat env.bytecode 
-                        [[aload_ 0, 
-                        invokedynamic_ (methodtype_T (type_LT (concat pkg_ "Program")) (type_LT (concat pkg_ "Function"))) "addi" (methodtype_T object_LT object_LT)], 
-                        arg.bytecode, 
-                        [invokeinterface_ (concat pkg_ "Function") "apply" (methodtype_T object_LT object_LT)]], 
-                    classes = concat env.classes arg.classes,
-                    functions = concat env.functions arg.functions,
-                    args = 0 }
+                applyFun_ env "addi" arg
             else match lhs with TmConst { val = CSubi _ } then 
-                applyArithI_ "Subi" env arg
+                applyFun_ env "subi" arg
             else match lhs with TmConst { val = CMuli _ } then 
-                applyArithI_ "Muli" env arg
+                applyFun_ env "muli" arg
             else match lhs with TmConst { val = CDivi _ } then 
-                applyArithI_ "Divi" env arg
+                applyFun_ env "divi" arg
             else match lhs with TmConst { val = CModi _ } then 
-                applyArithI_ "Modi" env arg
+                applyFun_ env "modi" arg
             else match lhs with TmConst { val = CAddf _ } then 
-                applyArithF_ "Addf" env arg 
+                applyFun_ env "addf" arg
             else match lhs with TmConst { val = CSubf _ } then 
-                applyArithF_ "Subf" env arg
+                applyFun_ env "subf" arg
             else match lhs with TmConst { val = CMulf _ } then 
-                applyArithF_ "Mulf" env arg
+                applyFun_ env "mulf" arg
             else match lhs with TmConst { val = CDivf _ } then 
-                applyArithF_ "Divf" env arg
+                applyFun_ env "divf" arg
             else match lhs with TmConst { val = CEqi _ } then
-                applyArithI_ "Eqi" env arg
+                applyFun_ env "eqi" arg
             else match lhs with TmConst { val = CNeqi _ } then
-                applyArithI_ "Neqi" env arg
+                applyFun_ env "neqi" arg
             else match lhs with TmConst { val = CLti _ } then
-                applyArithI_ "Lti" env arg
+                applyFun_ env "lti" arg
             else match lhs with TmConst { val = CGti _ } then
-                applyArithI_ "Gti" env arg
+                applyFun_ env "gti" arg
             else match lhs with TmConst { val = CLeqi _ } then
-                applyArithI_ "Leqi" env arg
+                applyFun_ env "leqi" arg
             else match lhs with TmConst { val = CGeqi _ } then
-                applyArithI_ "Geqi" env arg
+                applyFun_ env "geqi" arg
             else match lhs with TmConst { val = CEqf _ } then
-                applyArithF_ "Eqf" env arg
+                applyFun_ env "eqf" arg
             else match lhs with TmConst { val = CNeqf _ } then
-                applyArithF_ "Neqf" env arg
+                applyFun_ env "neqf" arg
             else match lhs with TmConst { val = CLtf _ } then
-                applyArithF_ "Ltf" env arg
+                applyFun_ env "ltf" arg
             else match lhs with TmConst { val = CGtf _ } then
-                applyArithF_ "Gtf" env arg
+                applyFun_ env "gtf" arg
             else match lhs with TmConst { val = CLeqf _ } then
-                applyArithF_ "Leqf" env arg
+                applyFun_ env "leqf" arg
             else match lhs with TmConst { val = CGeqf _ } then
-                applyArithF_ "Geqf" env arg
+                applyFun_ env "geqf" arg
             else match lhs with TmConst { val = CSlli _ } then
-                applyArithI_ "Slli" env arg
+                applyFun_ env "slli" arg
             else match lhs with TmConst { val = CSrli _ } then
-                applyArithI_ "Srli" env arg
+                applyFun_ env  "srli" arg
             else match lhs with TmConst { val = CSrai _ } then
-                applyArithI_ "Srai" env arg
+                applyFun_ env  "srai" arg
             else match lhs with TmConst { val = CNegf _ } then
                 oneArgOpF_ dneg_ env arg
             else match lhs with TmConst { val = CNegi _ } then
                 oneArgOpI_ lneg_ env arg
             else match lhs with TmConst { val = CEqc _ } then
-                applyArithC_ "Eqc" env arg
+                applyFun_ env "eqc" arg
             else match lhs with TmConst { val = CRandSetSeed _ } then
                 { env with bytecode = foldl concat 
                                 env.bytecode 
@@ -129,7 +120,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                             classes = concat env.classes arg.classes,
                             functions = concat env.functions arg.functions }
             else match lhs with TmConst { val = CRandIntU _ } then
-                applyArithI_ "Rand" env arg
+                applyFun_ env "rand" arg
             else 
                 (print "Unknown Const!\n");
                 env
@@ -156,13 +147,13 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
     | TmLam { ident = ident, body = body } ->
         let funcName = createName_ "func" in 
         match env.name with "Main" then
-            let bodyEnv = toJSONExpr { env with bytecode = [], localVars = 2, vars = mapInsert ident 1 (mapEmpty nameCmp), name = funcName } body in 
+            let bodyEnv = toJSONExpr { env with bytecode = [], functions = [], localVars = 2, vars = mapInsert ident 1 (mapEmpty nameCmp), name = funcName } body in 
             { env with 
                 bytecode = concat env.bytecode [aload_ 0, invokedynamic_ (methodtype_T (type_LT (concat pkg_ "Program")) (type_LT (concat pkg_ "Function"))) funcName (methodtype_T object_LT object_LT)],
                 functions = snoc (concat env.functions bodyEnv.functions) (createFunction funcName (methodtype_T object_LT object_LT) (snoc bodyEnv.bytecode areturn_)),
                 classes = concat env.classes bodyEnv.classes }
         else 
-            let bodyEnv = toJSONExpr { env with bytecode = [], name = funcName, localVars = addi env.localVars 1, vars = mapInsert ident env.localVars env.vars } body in 
+            let bodyEnv = toJSONExpr { env with bytecode = [], functions = [], name = funcName, localVars = addi env.localVars 1, vars = mapInsert ident env.localVars env.vars } body in 
             let loads = foldli (lam acc. lam i. lam tup. concat acc [aload_ (addi i 1)]) [aload_ 0] (mapToSeq env.vars) in
             let ifargs = foldl (lam acc. lam tup. concat acc object_LT) (type_LT (concat pkg_ "Program")) (mapToSeq env.vars) in
             let ifdesc = join ["(", ifargs, ")", type_LT (concat pkg_ "Function")] in
@@ -314,8 +305,8 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
             classes = foldl concat env.classes [thnEnv.classes, elsEnv.classes],
             functions = foldl concat env.functions [thnEnv.functions, elsEnv.functions] }
     | PatChar { val = val } ->
-        let thnEnv = toJSONExpr { env with bytecode = [], classes = [] } thn in
-        let elsEnv = toJSONExpr { env with bytecode = [], classes = [] } els in
+        let thnEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [] } thn in
+        let elsEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [] } els in
         let elsLabel = createName_ "els" in
         let endLabel = createName_ "end" in
         let charVal = char2int val in
@@ -431,8 +422,8 @@ let compileJVMEnv = lam ast.
     let objToObj = createInterface "Function" [] [createFunction "apply" "(Ljava/lang/Object;)Ljava/lang/Object;" []] in 
     let env = { bytecode = [], vars = mapEmpty nameCmp, localVars = 1, classes = [], fieldVars = mapEmpty nameCmp, name = "Main", nextClass = createName_ "Func", recordMap = mapEmpty cmpType, adtTags = adt.2, functions = [], args = 0 } in
     let compiledEnv = (toJSONExpr env tlAst) in
-    --let bytecode = concat compiledEnv.bytecode [pop_, return_] in
-    let bytecode = concat compiledEnv.bytecode [astore_ 0, getstatic_ "java/lang/System" "out" "Ljava/io/PrintStream;", aload_ 0, invokevirtual_ "java/io/PrintStream" "print" "(Ljava/lang/Object;)V", return_] in
+    let bytecode = concat compiledEnv.bytecode [pop_, return_] in
+    --let bytecode = concat compiledEnv.bytecode [astore_ 0, getstatic_ "java/lang/System" "out" "Ljava/io/PrintStream;", aload_ 0, invokevirtual_ "java/io/PrintStream" "print" "(Ljava/lang/Object;)V", return_] in
     let progClass = createClass "Program" "" [] defaultConstructor (concat [createFunction "start" "()V" bytecode] (concat mainFuncs_ compiledEnv.functions)) in 
     let mainFunc = createFunction "main" "([Ljava/lang/String;)V" (concat (initClass_ "Program") [invokevirtual_ (concat pkg_ "Program") "start" "()V", return_]) in 
     let mainClass = createClass "Main" "" [] defaultConstructor [mainFunc] in
@@ -462,7 +453,7 @@ let compileJava = lam outDir. lam jarPath.
     let cfmClass = (concat stdlibLoc "/jvm/codegen/ClassfileMaker.java") in
     let jsonParserClass = (concat stdlibLoc "/jvm/codegen/Parser.java") in
     let classpath = (join [jarPath, "jackson-annotations-2.14.2.jar:", jarPath, "jackson-core-2.14.2.jar:", jarPath, "jackson-databind-2.14.2.jar:", jarPath, "asm-9.4.jar"]) in
-    (printLn (sysRunCommand ["javac", "-cp", classpath, cfmClass, jsonParserClass, "-d", outDir] "" ".").stderr);
+    (sysRunCommand ["javac", "-cp", classpath, cfmClass, jsonParserClass, "-d", outDir] "" ".");
     ()
 
 let modifyMainClassForTest = lam prog.
@@ -474,7 +465,7 @@ let modifyMainClassForTest = lam prog.
     match mainFunc with Function f in
     let bytecodes = subsequence f.bytecode 0 (subi (length f.bytecode) 2) in
     let modifiedMainFunc = createFunction f.name f.descriptor (concat bytecodes [astore_ 0, getstatic_ "java/lang/System" "out" "Ljava/io/PrintStream;", aload_ 0, invokevirtual_ "java/io/PrintStream" "print" "(Ljava/lang/Object;)V", return_]) in
-    let modifiedMainClass = createClass m.name m.implements m.fields m.constructor [modifiedMainFunc] in
+    let modifiedMainClass = createClass m.name m.implements m.fields m.constructor (snoc (subsequence m.functions 1 (length m.functions)) modifiedMainFunc) in
     createProg p.package (snoc (subsequence p.classes 0 (subi (length p.classes) 1)) modifiedMainClass) p.interfaces
     
 
@@ -512,7 +503,7 @@ let testJVM = lam ast.
     let classpath = (join [":", jarPath, "jackson-annotations-2.14.2.jar:", jarPath, "jackson-core-2.14.2.jar:", jarPath, "jackson-databind-2.14.2.jar:", jarPath, "asm-9.4.jar"]) in
     (sysRunCommand ["java", "-cp", (join [jvmTmpPath, "out/", classpath]), "codegen/Parser", json] "" jvmTmpPath);
     let results = sysRunCommand ["java", "pkg.Main"] "" jvmTmpPath in
-    --sysDeleteDir json;
+    sysDeleteDir json;
     results.stdout
 
 -- tests

@@ -44,7 +44,8 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         recordMap : Map Name (Map SID Int),
         adtTags : Map Name (String, Int),
         globalFuncMap : Map Name String,
-        constSeqBC : [Function]
+        constSeqBC : [Function],
+        functions : [Function]
     }
 
     -- go through AST and translate to JVM bytecode
@@ -91,7 +92,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         else match val with CArgv _ then
             [getstatic_ (concat pkg_ "Main") "argv" "Lscala/collection/immutable/Vector;"]
         else match val with CAddi _ then
-            initClass_ "Addi_INTRINSIC$"
+            applyFun_ "addi"
         else match val with CSubi _ then
             initClass_ "Subi_INTRINSIC$"
         else match val with CMuli _ then
@@ -257,7 +258,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         else never) in
         { env with bytecode = concat env.bytecode bc }
     | TmApp { lhs = lhs, rhs = rhs, ty = ty } ->
-        let arg = toJSONExpr { env with bytecode = [], classes = [], constSeqBC = [] } rhs in
+        let arg = toJSONExpr { env with bytecode = [], classes = [], functions = [], constSeqBC = [] } rhs in
         let fun = toJSONExpr env lhs in
         { fun with
             bytecode = foldl concat fun.bytecode
@@ -265,6 +266,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                 [checkcast_ object_T],
                 [invokeinterface_ (concat pkg_ "Function") "apply" "(Ljava/lang/Object;)Ljava/lang/Object;"]],
                 classes = concat fun.classes arg.classes,
+                functions = concat fun.functions arg.functions,
                 constSeqBC = concat fun.constSeqBC arg.constSeqBC }
     | TmLet { ident = ident, body = body, inexpr = inexpr, tyBody = tyBody } ->
         let funcmap = (match body with TmLam _ then
@@ -280,36 +282,44 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                         vars = mapInsert ident env.localVars env.vars,
                         globalFuncMap = funcmap } inexpr
     | TmLam { ident = ident, body = body } ->
-        let className = env.nextClass in
-        let newField = (createField (nameGetStr ident) object_LT) in
+        let funcName = env.nextClass in
         let nextClass = createName_ "Func" in
-        let bodyEnv = toJSONExpr
-            { env with
-                bytecode = [],
-                name = className,
-                nextClass = nextClass,
-                fieldVars = mapInsert ident newField env.fieldVars,
-                vars = mapInsert ident 1 (mapEmpty nameCmp),
-                localVars = 2 } body in
-        let fields = map (lam x. x.1) (mapToSeq env.fieldVars) in
-        match body with TmLam _ then
-            let putfields = join (mapi (lam i. lam x. [aload_ 0, getfield_ (concat pkg_ className) (getNameField x) object_LT, putfield_ (concat pkg_ nextClass) (getNameField x) object_LT]) fields) in
-            let dups = map (lam x. dup_) fields in
-            let apply = apply_ (foldl concat bodyEnv.bytecode [dups, [dup_, aload_ 1, putfield_ (concat pkg_ nextClass) (nameGetStr ident) object_LT], putfields]) in
-            let funcClass = createClass className (concat pkg_ "Function") (snoc fields newField) defaultConstructor [apply] in
-            { env with
-                classes = snoc bodyEnv.classes funcClass,
+        match env.name with "Main" then 
+            let bodyEnv = toJSONExpr 
+                { env with 
+                    bytecode = [], 
+                    functions = [], 
+                    localVars = 2, 
+                    nextClass = nextClass,
+                    vars = mapInsert ident 1 (mapEmpty nameCmp), 
+                    name = funcName } body in 
+            { env with 
+                bytecode = foldl concat 
+                                env.bytecode 
+                                [[aload_ 0,
+                                invokedynamic_ (methodtype_T (type_LT (concat pkg_ "Program")) (type_LT (concat pkg_ "Function"))) funcName (methodtype_T object_LT object_LT)]],
+                functions = snoc (concat env.functions bodyEnv.functions) (createFunction funcName (methodtype_T object_LT object_LT) (snoc bodyEnv.bytecode areturn_)),
+                classes = concat env.classes bodyEnv.classes,
                 constSeqBC = bodyEnv.constSeqBC,
-                bytecode = foldl concat env.bytecode [initClass_ className],
                 nextClass = bodyEnv.nextClass }
         else
-            let apply = apply_ bodyEnv.bytecode in
-            let funcClass = createClass className (concat pkg_ "Function") fields defaultConstructor [apply] in
-            { env with
-                classes = snoc bodyEnv.classes funcClass,
+            let bodyEnv = toJSONExpr 
+                { env with 
+                    bytecode = [], 
+                    functions = [], 
+                    name = funcName, 
+                    localVars = addi env.localVars 1, 
+                    vars = mapInsert ident env.localVars env.vars } body in 
+            let loads = foldli (lam acc. lam i. lam tup. concat acc [aload_ (addi i 1)]) [aload_ 0] (mapToSeq env.vars) in
+            let ifargs = foldl (lam acc. lam tup. concat acc object_LT) (type_LT (concat pkg_ "Program")) (mapToSeq env.vars) in
+            let ifdesc = join ["(", ifargs, ")", type_LT (concat pkg_ "Function")] in
+            let fargs = foldl (lam acc. lam tup. concat acc object_LT) object_LT (mapToSeq env.vars) in 
+            let fdesc = join ["(", fargs, ")", object_LT] in
+            { env with 
+                bytecode = foldl concat env.bytecode [loads, [invokedynamic_ ifdesc funcName fdesc]],
+                functions = snoc (concat env.functions bodyEnv.functions) (createFunction funcName fdesc (snoc bodyEnv.bytecode areturn_)),
+                classes = concat env.classes bodyEnv.classes,
                 constSeqBC = bodyEnv.constSeqBC,
-               bytecode = foldl concat env.bytecode [initClass_ className],
-                fieldVars = mapEmpty nameCmp,
                 nextClass = bodyEnv.nextClass }
     | TmVar { ident = ident } ->
         let store = (match mapLookup ident env.vars with Some i then
@@ -338,13 +348,14 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                         let i = tup.1 in
                         let expr = (match mapLookup sid bindings with Some e then e else never) in
                         let exprEnv = toJSONExpr { e with bytecode = concat e.bytecode [dup_, ldcInt_ i] } expr in
-                        { e with bytecode = snoc exprEnv.bytecode aastore_, classes = concat e.classes exprEnv.classes, constSeqBC = exprEnv.constSeqBC })
-                    { env with bytecode = [], classes = [], constSeqBC = [] }
+                        { e with bytecode = snoc exprEnv.bytecode aastore_, classes = concat e.classes exprEnv.classes, functions = concat e.functions exprEnv.functions, constSeqBC = exprEnv.constSeqBC })
+                    { env with bytecode = [], classes = [], functions = [], constSeqBC = [] }
                     (mapToSeq translation) in
                 let recordBytecode = concat [ldcInt_ len, anewarray_ object_T] insertBytecode.bytecode in
                 { env with
                     bytecode = concat env.bytecode (wrapRecord_ recordBytecode),
                     classes = concat env.classes insertBytecode.classes,
+                    functions = concat env.functions insertBytecode.functions,
                     constSeqBC = concat env.constSeqBC insertBytecode.constSeqBC,
                     recordMap = mapUnion env.recordMap insertBytecode.recordMap }
             else never
@@ -391,7 +402,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         let name = (match realTy with TyCon { ident = ident } then ident else never) in
         let mapping = (match mapLookup name env.recordMap with Some map then map else never) in
         let inew = (match mapLookup key mapping with Some i then i else never) in
-        let valueEnv = toJSONExpr { env with bytecode = [], classes = [], constSeqBC = [] } value in
+        let valueEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [], constSeqBC = [] } value in
         let recEnv = toJSONExpr env rec in
         let arr = env.localVars in
         let len = addi env.localVars 1 in 
@@ -434,12 +445,13 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                 [aastore_],
                 wrapRecord_ [aload_ newarr]],
             classes = concat recEnv.classes valueEnv.classes,
+            functions = concat recEnv.functions valueEnv.functions,
             constSeqBC = concat recEnv.constSeqBC valueEnv.constSeqBC }
     | TmType _ -> (error "TmType: Should be gone"); env
     | TmConDef _ -> (error "TmConDef: Should be gone"); env
     | TmConApp { ident = ident, body = body } ->
         let constructor = nameGetStr ident in
-        let bodyEnv = toJSONExpr { env with bytecode = [], classes = [], constSeqBC = [] } body in
+        let bodyEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [], constSeqBC = [] } body in
         { env with
             bytecode = foldl concat
                 env.bytecode
@@ -448,6 +460,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                 bodyEnv.bytecode,
                 [checkcast_ object_T, putfield_ (concat pkg_ constructor) "value" object_LT]],
             classes = concat bodyEnv.classes env.classes,
+            functions = concat bodyEnv.functions env.functions,
             constSeqBC = concat bodyEnv.constSeqBC env.constSeqBC,
             recordMap = mapUnion env.recordMap bodyEnv.recordMap }
     | TmUtest _ -> (error "TmUtest"); env
@@ -467,8 +480,8 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
     sem jvmPat : JVMEnv -> Type -> Expr -> Expr -> Pat -> JVMEnv
     sem jvmPat env targetty thn els =
     | PatInt { val = val } ->
-        let thnEnv = toJSONExpr { env with bytecode = [], classes = [], constSeqBC = [] } thn in
-        let elsEnv = toJSONExpr { env with bytecode = [], classes = [], constSeqBC = [] } els in
+        let thnEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [], constSeqBC = [] } thn in
+        let elsEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [], constSeqBC = [] } els in
         let elsLabel = createName_ "els" in
         let endLabel = createName_ "end" in
         { env with
@@ -484,6 +497,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                     elsEnv.bytecode,
                     [label_ endLabel]],
             classes = foldl concat env.classes [thnEnv.classes, elsEnv.classes],
+            functions = foldl concat env.functions [thnEnv.functions, elsEnv.functions],
             constSeqBC = foldl concat env.constSeqBC [thnEnv.constSeqBC, elsEnv.constSeqBC] }
     | PatRecord { bindings = bindings, ty = ty } ->
         let realTy = unwrapType ty in
@@ -515,8 +529,8 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         else -- match () with () 
             toJSONExpr { env with bytecode = snoc env.bytecode pop_ } thn
     | PatBool { val = val } ->
-        let thnEnv = toJSONExpr { env with bytecode = [], classes = [], constSeqBC = [] } thn in
-        let elsEnv = toJSONExpr { env with bytecode = [], classes = [], constSeqBC = [] } els in
+        let thnEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [], constSeqBC = [] } thn in
+        let elsEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [], constSeqBC = [] } els in
         let elsLabel = createName_ "els" in
         let endLabel = createName_ "end" in
         let boolVal = (match val with true then 1 else 0) in
@@ -532,10 +546,11 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                     elsEnv.bytecode,
                     [label_ endLabel]],
             classes = foldl concat env.classes [thnEnv.classes, elsEnv.classes],
+            functions = foldl concat env.functions [thnEnv.functions, elsEnv.functions],
             constSeqBC = foldl concat env.constSeqBC [thnEnv.constSeqBC, elsEnv.constSeqBC] }
     | PatChar { val = val } ->
-        let thnEnv = toJSONExpr { env with bytecode = [], classes = [], constSeqBC = [] } thn in
-        let elsEnv = toJSONExpr { env with bytecode = [], classes = [], constSeqBC = [] } els in
+        let thnEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [], constSeqBC = [] } thn in
+        let elsEnv = toJSONExpr { env with bytecode = [], classes = [], functions = [],constSeqBC = [] } els in
         let elsLabel = createName_ "els" in
         let endLabel = createName_ "end" in
         let charVal = char2int val in
@@ -551,6 +566,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                     elsEnv.bytecode,
                     [label_ endLabel]],
             classes = foldl concat env.classes [thnEnv.classes, elsEnv.classes],
+            functions = foldl concat env.functions [thnEnv.functions, elsEnv.functions],
             constSeqBC = foldl concat env.constSeqBC [thnEnv.constSeqBC, elsEnv.constSeqBC] }
     | PatCon { ident = ident, subpat = subpat } ->
         let typeTag = (match mapLookup ident env.adtTags with Some tup then tup else never) in
@@ -578,7 +594,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                                 localVars = addi 1 env.localVars,
                                 vars = mapInsert name env.localVars env.vars } in
                 let thnEnv = toJSONExpr patEnv thn in
-                let elsEnv = toJSONExpr { patEnv with bytecode = [], classes = [], constSeqBC = [] } els in
+                let elsEnv = toJSONExpr { patEnv with bytecode = [], classes = [], functions = [], constSeqBC = [] } els in
                 { thnEnv with
                     bytecode = foldl concat
                         thnEnv.bytecode
@@ -588,6 +604,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                         elsEnv.bytecode,
                         [label_ endLabel]],
                     classes = concat thnEnv.classes elsEnv.classes,
+                    functions = concat thnEnv.functions elsEnv.functions,
                     constSeqBC = concat thnEnv.constSeqBC elsEnv.constSeqBC }
             else -- wildcard
                 let patEnv = { env with
@@ -603,7 +620,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                                     ificmpne_ elsLabel,
                                     pop_]] } in
                 let thnEnv = toJSONExpr patEnv thn in
-                let elsEnv = toJSONExpr { patEnv with bytecode = [], classes = [], constSeqBC = [] } els in
+                let elsEnv = toJSONExpr { patEnv with bytecode = [], classes = [], functions = [], constSeqBC = [] } els in
                 { thnEnv with
                     bytecode = foldl concat
                         thnEnv.bytecode
@@ -613,6 +630,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                         elsEnv.bytecode,
                         [label_ endLabel]],
                     classes = concat thnEnv.classes elsEnv.classes,
+                    functions = concat thnEnv.functions elsEnv.functions,
                     constSeqBC = concat thnEnv.constSeqBC elsEnv.constSeqBC }
         else never
     | PatSeqTot { pats = pats } ->
@@ -645,7 +663,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                     ificmpne_ elsLabel] }
             pats in
         let thnEnv = toJSONExpr { patEnv with bytecode = snoc patEnv.bytecode pop_ } thn in
-        let elsEnv = toJSONExpr { patEnv with bytecode = [], classes = [], constSeqBC = [] } els in
+        let elsEnv = toJSONExpr { patEnv with bytecode = [], classes = [], functions = [], constSeqBC = [] } els in
         { thnEnv with
             bytecode = foldl concat
                 thnEnv.bytecode
@@ -655,6 +673,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                 elsEnv.bytecode,
                 [label_ endLabel]],
             classes = concat thnEnv.classes elsEnv.classes,
+            functions = concat thnEnv.functions elsEnv.functions,
             constSeqBC = concat thnEnv.constSeqBC elsEnv.constSeqBC }
     | PatSeqEdge { prefix = prefix, middle = middle, postfix = postfix } ->
         -- calculate length less
@@ -730,7 +749,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
             middleEnv
             postfix in
         let thnEnv = toJSONExpr { postfixEnv with bytecode = snoc postfixEnv.bytecode pop_ } thn in
-        let elsEnv = toJSONExpr { postfixEnv with bytecode = [], classes = [], constSeqBC = [] } els in
+        let elsEnv = toJSONExpr { postfixEnv with bytecode = [], classes = [], functions = [], constSeqBC = [] } els in
         { thnEnv with
             bytecode = foldl concat
                 thnEnv.bytecode
@@ -740,6 +759,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                 elsEnv.bytecode,
                 [label_ endLabel]],
             classes = concat thnEnv.classes elsEnv.classes,
+            functions = concat thnEnv.functions elsEnv.functions,
             constSeqBC = concat thnEnv.constSeqBC elsEnv.constSeqBC }
     | PatNamed { ident = ident } ->
         match ident with PName name then
@@ -851,7 +871,7 @@ let compileJVMEnv = lam ast.
     let tlAst = tl.1 in
     let objToObj = createInterface "Function" [] [createFunction "apply" "(Ljava/lang/Object;)Ljava/lang/Object;" []] in
     let env = {
-            bytecode = setArgvBC_,
+            bytecode = [],
             vars = mapEmpty nameCmp,
             localVars = 1,
             classes = [],
@@ -861,13 +881,18 @@ let compileJVMEnv = lam ast.
             recordMap = recordMap,
             adtTags = adt.2,
             globalFuncMap = mapEmpty nameCmp,
-            constSeqBC = [] } in
+            constSeqBC = [],
+            functions = [] } in
     let compiledEnv = (toJSONExpr env tlAst) in
-    let bytecode = concat compiledEnv.bytecode [pop_, return_] in
-    --let bytecode = concat compiledEnv.bytecode [astore_ 0, getstatic_ "java/lang/System" "out" "Ljava/io/PrintStream;", aload_ 0, invokevirtual_ "java/io/PrintStream" "print" "(Ljava/lang/Object;)V", return_] in
-    let mainFunc = createFunction "main" "([Ljava/lang/String;)V" bytecode in
-    let constClasses = foldl concat constClassList_ [adt.1, [constSeqClass_ compiledEnv.constSeqBC]] in
-    let prog = createProg pkg_ (snoc (concat compiledEnv.classes constClasses) (createClass "Main" "" [] defaultConstructor [mainFunc])) (snoc adt.0 objToObj) in
+    --let bytecode = concat compiledEnv.bytecode [pop_, return_] in
+    let bytecode = concat compiledEnv.bytecode [astore_ 0, getstatic_ "java/lang/System" "out" "Ljava/io/PrintStream;", aload_ 0, invokevirtual_ "java/io/PrintStream" "print" "(Ljava/lang/Object;)V", return_] in
+    let startFunc = createFunction "start" "()V" bytecode in
+    let programClass = createClass "Program" "" [] defaultConstructor (snoc (concat intrinsicsFuncs_ compiledEnv.functions) startFunc) in
+    let constClasses = foldl concat adt.1 [[constSeqClass_ compiledEnv.constSeqBC, programClass], dynamicConstClassList_] in
+    let mainBytecode = foldl concat setArgvBC_ [initClass_ "Program", [invokevirtual_ (concat pkg_ "Program") "start" "()V", return_]] in
+    let mainFunc = createFunction "main" "([Ljava/lang/String;)V" mainBytecode in
+    let prog = createProg pkg_ (snoc constClasses (createClass "Main" "" [] defaultConstructor [mainFunc])) (snoc adt.0 objToObj) in
+    (printLn (toStringProg prog));
     prog
 
 lang MExprJVMCompileLang = MExprJVMCompile + MExprLambdaLift + MExprTypeCheck + MExprPrettyPrint end

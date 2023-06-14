@@ -31,6 +31,7 @@ lang JVMAst
     | BFloat {instr: String, nr: Float}
     | BLong {instr: String, nr: Int}
     | TryCatch {instr: String, try: [Bytecode], catch: [Bytecode]}
+    | BDyn {instr: String, ifdesc: String, fname: String, fdesc: String}
 
     syn Field =
     | Field {name: String, t: String}
@@ -54,6 +55,10 @@ lang JVMAst
     | Field {name = name} -> name
 
     -- create constructs
+
+    sem createBDyn : String -> String -> String -> Bytecode
+    sem createBDyn ifdesc fname =
+    | fdesc -> BDyn {instr = "INVOKEDYNAMIC", ifdesc = ifdesc, fname = fname, fdesc = fdesc}
 
     sem createBString : String -> String -> Bytecode
     sem createBString instr = 
@@ -152,5 +157,14 @@ lang JVMAst
         (join ["{", "\"type\":", "\"empty\"", ",\"instr\":", (stringify i), "}"])
     | TryCatch {instr = i, try = t, catch = c} ->
         (join ["{", "\"type\":", "\"trycatch\"", ",\"instr\":", (stringify i), ",\"try\":[", (commaSeparate (map toStringBytecode t)), "],\"catch\":[", (commaSeparate (map toStringBytecode c)), "]}"])
+    | BDyn {instr = i, ifdesc = ifd, fname = fn, fdesc = fd} ->
+        (join ["{", "\"type\":", "\"dynamic\"", 
+                ",\"instr\":", (stringify i), 
+                ",\"interfFuncName\":", "\"apply\"", 
+                ",\"interfFuncDesc\":", (stringify ifd), 
+                ",\"functionName\":", (stringify fn),
+                ",\"functionDesc\":", (stringify fd),
+                ",\"SAMtype\":", "\"(Ljava/lang/Object;)Ljava/lang/Object;\"",
+                ",\"instantiatedMT\":", "\"(Ljava/lang/Object;)Ljava/lang/Object;\"", "}"])
 
 end

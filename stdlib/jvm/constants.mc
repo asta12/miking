@@ -118,6 +118,9 @@ let invokeinterface_ = use JVMAst in
 let invokestatic_ = use JVMAst in
     lam owner. lam name. lam descriptor. createBApply "INVOKESTATIC" owner name descriptor
 
+let invokedynamic_ = use JVMAst in
+    lam ifdesc. lam fname. lam fdesc. createBDyn ifdesc fname fdesc  
+
 let new_ = use JVMAst in
     lam name. createBString "NEW" name
 
@@ -2354,6 +2357,53 @@ let constClassList_ =
     threeArgApplyClass1_ "Set_INTRINSIC",
     threeArgApplyClass2_ "Set_INTRINSIC",
     argvClass_]
+
+----------dynamic---------
+
+let dynamicConstClassList_ = [
+    genSymbolClass_,
+    recordClass_,
+    charClass_,
+    argvClass_]
+
+let arithFunII_ = use JVMAst in
+    lam name. lam arith.
+    createFunction 
+        name 
+        (methodtype_T (concat object_LT object_LT) object_LT) 
+        (foldl concat 
+            [aload_ 1]
+            [unwrapInteger_,
+            [aload_ 2],
+            unwrapInteger_,
+            arith,
+            wrapInteger_,
+            [areturn_]])
+
+let fun__ = use JVMAst in
+    lam name1. lam name2.
+    createFunction
+        name1 
+        (methodtype_T object_LT object_LT)
+        [aload_ 0,
+        aload_ 1, 
+        invokedynamic_ (methodtype_T (concat (type_LT (concat pkg_ "Program")) object_LT) (type_LT (concat pkg_ "Function"))) name2 (methodtype_T (concat object_LT object_LT) object_LT),
+        areturn_] 
+
+let addiFun_ = arithFunII_ "addiLogic" [ladd_]
+let addiFun__ = fun__ "addi" "addiLogic"
+
+let intrinsicsFuncs_ = [
+    addiFun_,
+    addiFun__]
+
+let applyFun_ = use JVMAst in
+    lam name.
+    [aload_ 0,
+    invokedynamic_ (methodtype_T (type_LT (concat pkg_ "Program")) (type_LT (concat pkg_ "Function"))) name (methodtype_T object_LT object_LT)]
+
+
+---------------------------
 
 let createRunScript_ = lam programName.
     (sysRunCommand ["touch", programName] "" ".");

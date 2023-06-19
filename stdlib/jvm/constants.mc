@@ -2380,6 +2380,24 @@ let arithFunII_ = use JVMAst in
             wrapInteger_,
             [areturn_]])
 
+let arithFunIB_ = use JVMAst in 
+    lam name. lam arith. lam label.
+    createFunction
+        name
+        (methodtype_T (concat object_LT object_LT) object_LT)
+        (foldl concat
+            [ldcInt_ 1,
+            aload_ 1]
+            [unwrapInteger_, 
+            [aload_ 2], 
+            unwrapInteger_, 
+            arith,
+            [pop_, 
+            ldcInt_ 0,
+            label_ label],
+            wrapBoolean_,
+            [areturn_]])
+
 let fun__ = use JVMAst in
     lam name1. lam name2.
     createFunction
@@ -2392,10 +2410,155 @@ let fun__ = use JVMAst in
 
 let addiFun_ = arithFunII_ "addiLogic" [ladd_]
 let addiFun__ = fun__ "addi" "addiLogic"
+let subiFun_ = arithFunII_ "subiLogic" [lsub_]
+let subiFun__ = fun__ "subi" "subiLogic"
+let ltiFun_ = arithFunIB_ "ltiLogic" [lcmp_, iflt_ "end"] "end"
+let ltiFun__ = fun__ "lti" "ltiLogic"
+
+let headFun_ = use JVMAst in
+            createFunction
+                "head"
+                (methodtype_T object_LT object_LT)
+                    (foldl concat
+                        [aload_ 1]
+                        [[checkcast_ seq_T,
+                        invokevirtual_ seq_T "head" (methodtype_T "" object_LT),
+                        areturn_]])
+
+let endLabelTail = createName_ "end"
+let tailFun_ = use JVMAst in
+            createFunction
+                "tail"
+                (methodtype_T object_LT object_LT)
+                    (foldl concat
+                        [aload_ 1]
+                        [[checkcast_ seq_T,
+                        dup_,
+                        invokevirtual_ seq_T "length" (methodtype_T "" "I"),
+                        ldcInt_ 0,
+                        ificmpeq_ endLabelTail,
+                        invokevirtual_ seq_T "tail" (methodtype_T "" seq_LT),
+                        label_ endLabelTail,
+                        areturn_]])
+
+let consFun_ = use JVMAst in
+            createFunction
+                "consLogic"
+                (methodtype_T (concat object_LT object_LT) object_LT)
+                (foldl concat 
+                    [aload_ 2]
+                    [[checkcast_ seq_T,
+                    aload_ 1,
+                    invokevirtual_ seq_T "$plus$colon" (methodtype_T object_LT object_LT),
+                    areturn_]])
+let consFun__ = fun__ "cons" "consLogic"
+
+let reverseFun_ = use JVMAst in
+                createFunction
+                    "reverse"
+                    (methodtype_T object_LT object_LT)
+                    (foldl concat
+                        [aload_ 1]
+                        [[checkcast_ seq_T,
+                        invokevirtual_ seq_T "reverse" (methodtype_T "" object_LT),
+                        areturn_]])
+                
+let endLabelNull = createName_ "end"
+let nullFun_ = use JVMAst in
+            createFunction
+                "null"
+                (methodtype_T object_LT object_LT)
+                    (foldl concat 
+                        [ldcInt_ 1,
+                        aload_ 1]
+                        [[checkcast_ seq_T,
+                        invokevirtual_ seq_T "length" (methodtype_T "" "I"),
+                        ifeq_ endLabelNull,
+                        pop_,
+                        ldcInt_ 0,
+                        label_ endLabelNull],
+                        wrapBoolean_,
+                        [areturn_]])
+
+let getFun_ = use JVMAst in
+        createFunction
+            "getLogic"
+            (methodtype_T (concat object_LT object_LT) object_LT)
+            (foldl concat 
+                [aload_ 1]
+                [[checkcast_ seq_T,
+                aload_ 2],
+                unwrapInteger_,
+                [l2i_,
+                invokevirtual_ seq_T "apply" (methodtype_T "I" object_LT),
+                areturn_]])
+let getFun__ = fun__ "get" "getLogic"
+
+let splitAtFun_ = use JVMAst in
+        createFunction
+            "splitAtLogic"
+            (methodtype_T (concat object_LT object_LT) object_LT)
+            (foldl concat
+                [aload_ 1,
+                checkcast_ seq_T]
+                [[aload_ 2],
+                unwrapInteger_,
+                [l2i_,
+                invokevirtual_ seq_T "splitAt" "(I)Lscala/Tuple2;",
+                astore_ 2,
+                new_ (concat pkg_ "Record"),
+                dup_,
+                dup_,
+                ldcInt_ 2,
+                anewarray_ object_T,
+                dup_,
+                dup_,
+                ldcInt_ 0,
+                aload_ 2,
+                getfield_ "scala/Tuple2" "_1" object_LT,
+                checkcast_ seq_T,
+                aastore_,
+                ldcInt_ 1,
+                aload_ 2,
+                getfield_ "scala/Tuple2" "_2" object_LT,
+                checkcast_ seq_T,
+                aastore_,
+                invokespecial_ (concat pkg_ "Record") "<init>" "([Ljava/lang/Object;)V",
+                areturn_]])
+let splitAtFun__ = fun__ "splitAt" "splitAtLogic"
+
+let concatFun_ = use JVMAst in 
+        createFunction
+            "concatLogic"
+            (methodtype_T (concat object_LT object_LT) object_LT)
+            (foldl concat
+                [aload_ 2,
+                checkcast_ seq_T]
+                [[aload_ 1,
+                checkcast_ seq_T,
+                invokevirtual_ seq_T "$plus$plus" (methodtype_T "Lscala/collection/IterableOnce;" object_LT),
+                areturn_]])
+let concatFun__ = fun__ "concat" "concatLogic"
 
 let intrinsicsFuncs_ = [
     addiFun_,
-    addiFun__]
+    addiFun__,
+    subiFun_,
+    subiFun__,
+    ltiFun_,
+    ltiFun__,
+    headFun_,
+    tailFun_,
+    consFun_,
+    consFun__,
+    reverseFun_,
+    nullFun_,
+    getFun_,
+    getFun__,
+    splitAtFun_,
+    splitAtFun__,
+    concatFun_,
+    concatFun__]
 
 let applyFun_ = use JVMAst in
     lam name.

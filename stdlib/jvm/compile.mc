@@ -77,7 +77,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                     { env with bytecode = concat env.bytecode [new_ vb, dup_, invokespecial_ vb "<init>" "()V"] }
                     tms in
             { e with bytecode = snoc e.bytecode (invokevirtual_ vb "result" "()Lscala/collection/immutable/Vector;") }
-    | TmConst { val = val, ty = ty } ->
+    | TmConst { val = val, ty = ty } & t ->
         let bc = (match val with CInt { val = val } then
             concat [ldcLong_ val] wrapInteger_
         else match val with CFloat { val = val } then
@@ -94,7 +94,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         else match val with CAddi _ then
             applyFun_ "addi"
         else match val with CSubi _ then
-            initClass_ "Subi_INTRINSIC$"
+            applyFun_ "subi"
         else match val with CMuli _ then
             initClass_ "Muli_INTRINSIC$"
         else match val with CModi _ then
@@ -114,7 +114,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         else match val with CNegi _ then
             initClass_ "Negi_INTRINSIC"
         else match val with CLti _ then
-            initClass_ "Lti_INTRINSIC$"
+            applyFun_ "lti"
         else match val with CGti _ then
             initClass_ "Gti_INTRINSIC$"
         else match val with CLeqi _ then
@@ -172,11 +172,11 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         else match val with CSym2hash _ then
             initClass_ "Sym2Hash_INTRINSIC"
         else match val with CReverse _ then
-            initClass_ "Reverse_INTRINSIC"
+            applyFun_ "reverse"
         else match val with CHead _ then
-            initClass_ "Head_INTRINSIC"
+            applyFun_ "head"
         else match val with CTail _ then
-            initClass_ "Tail_INTRINSIC"
+            applyFun_ "tail"
         else match val with CLength _ then
             initClass_ "Length_INTRINSIC"
         else match val with CFileExists _ then
@@ -210,13 +210,11 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         else match val with CEqsym _ then
             initClass_ "Eqsym_INTRINSIC$"
         else match val with CCons _ then
-            initClass_ "Cons_INTRINSIC$"
-        else match val with CGet _ then
-            initClass_ "Get_INTRINSIC$"
+            applyFun_ "cons"
         else match val with CSnoc _ then
             initClass_ "Snoc_INTRINSIC$"
         else match val with CConcat _ then
-            initClass_ "Concat_INTRINSIC$"
+            applyFun_ "concat"
         else match val with CMap _ then
             initClass_ "Map_INTRINSIC$"
         else match val with CMapi _ then
@@ -232,7 +230,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         else match val with CIsRope _ then
             initClass_ "IsRope_INTRINSIC"
         else match val with CSplitAt _ then
-            initClass_ "SplitAt_INTRINSIC$"
+            applyFun_ "splitAt"
         else match val with CCreate _ then
             initClass_ "Create_INTRINSIC$"
         else match val with CCreateList _ then
@@ -246,7 +244,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
         else match val with CSubsequence _ then
             initClass_ "SubSequence_INTRINSIC$"
         else match val with CNull _ then
-            initClass_ "Null_INTRINSIC"
+            applyFun_ "null"
         else match val with CModRef _ then
             initClass_ "ModRef_INTRINSIC$"
         else match val with CFileWrite _ then
@@ -255,7 +253,9 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
             initClass_ "DPrint_INTRINSIC"
         else match val with CSet _ then
             initClass_ "Set_INTRINSIC$"
-        else never) in
+        else match val with CGet _ then
+            applyFun_ "get"
+        else (printLn (expr2str t)); never) in
         { env with bytecode = concat env.bytecode bc }
     | TmApp { lhs = lhs, rhs = rhs, ty = ty } ->
         let arg = toJSONExpr { env with bytecode = [], classes = [], functions = [], constSeqBC = [] } rhs in
@@ -283,7 +283,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                         globalFuncMap = funcmap } inexpr
     | TmLam { ident = ident, body = body } ->
         let funcName = env.nextClass in
-        let nextClass = createName_ "Func" in
+        let nextClass = createName_ "func" in
         match env.name with "Main" then 
             let bodyEnv = toJSONExpr 
                 { env with 
@@ -328,7 +328,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
             -- do fieldlookup
             [aload_ 0, getfield_ (concat pkg_ env.name) (getNameField field) "Ljava/lang/Object;"]
         else match mapLookup ident env.globalFuncMap with Some global then
-            (initClass_ global)
+            applyFun_ global
         else
             (print (join ["No identifier! ", nameGetStr ident, "\n"]));
             []) in
@@ -367,7 +367,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                 (lam acc. lam expr.
                     match expr with { ident = ident, body = body } then
                         match body with TmLam _ then
-                            (mapInsert ident acc.1 acc.0, createName_ "Func", mapInsert ident acc.1 acc.2)
+                            (mapInsert ident acc.1 acc.0, createName_ "func", mapInsert ident acc.1 acc.2)
                         else
                             acc
                     else never)
@@ -382,7 +382,7 @@ lang MExprJVMCompile = MExprAst + JVMAst + MExprPrettyPrint + MExprCmp
                             match body with TmLam _ then
                                 match mapLookup ident funcBindings with Some funcName then
                                     let bodyEnv = toJSONExpr { acc with nextClass = funcName, fieldVars = mapEmpty nameCmp } body in
-                                    { bodyEnv with bytecode = subsequence bodyEnv.bytecode 0 (subi (length bodyEnv.bytecode) 3) } 
+                                    { bodyEnv with bytecode = subsequence bodyEnv.bytecode 0 (subi (length bodyEnv.bytecode) 2) } 
                                 else never
                             else
                                 let bodyEnv = toJSONExpr acc body in
@@ -877,7 +877,7 @@ let compileJVMEnv = lam ast.
             classes = [],
             fieldVars = mapEmpty nameCmp,
             name = "Main",
-            nextClass = createName_ "Func",
+            nextClass = createName_ "func",
             recordMap = recordMap,
             adtTags = adt.2,
             globalFuncMap = mapEmpty nameCmp,
@@ -892,7 +892,6 @@ let compileJVMEnv = lam ast.
     let mainBytecode = foldl concat setArgvBC_ [initClass_ "Program", [invokevirtual_ (concat pkg_ "Program") "start" "()V", return_]] in
     let mainFunc = createFunction "main" "([Ljava/lang/String;)V" mainBytecode in
     let prog = createProg pkg_ (snoc constClasses (createClass "Main" "" [] defaultConstructor [mainFunc])) (snoc adt.0 objToObj) in
-    (printLn (toStringProg prog));
     prog
 
 lang MExprJVMCompileLang = MExprJVMCompile + MExprLambdaLift + MExprTypeCheck + MExprPrettyPrint end
